@@ -1,0 +1,339 @@
+diff --git a/db/03_pkg_nfse.sql b/db/03_pkg_nfse.sql
+index 123c597..cbf8f48 100644
+--- a/db/03_pkg_nfse.sql
++++ b/db/03_pkg_nfse.sql
+@@ -45,10 +45,9 @@ CREATE OR REPLACE PACKAGE BODY PKG_NFSE AS
+         v_numero NUMBER;
+     BEGIN
+         -- numeracao sequencial por prestador, sem buracos (exigencia fiscal)
+-        SELECT NVL(MAX(NUMERO), 0) + 1
++        SELECT SEQ_NFSE_NUMERO.NEXTVAL
+           INTO v_numero
+-          FROM NFSE
+-         WHERE PRESTADOR_ID = p_prestador_id;
++          FROM DUAL;
+ 
+         o_nfse_id := SEQ_NFSE.NEXTVAL;
+         o_numero := v_numero;
+diff --git a/db/init.sh b/db/init.sh
+index 0c835ed..d9427d3 100755
+--- a/db/init.sh
++++ b/db/init.sh
+@@ -8,4 +8,6 @@ for f in 01_schema 02_pkg_guia 03_pkg_nfse 04_triggers 05_seed_base 06_seed_volu
+     echo "[init] $f.sql"
+     sqlplus -s -L "$CONN" @/opt/nfse/db/$f.sql
+ done
++echo "[init] migrations/V001__seq_numero_nfse.sql"
++sqlplus -s -L "$CONN" @/opt/nfse/db/migrations/V001__seq_numero_nfse.sql
+ echo "[init] concluido em $(( $(date +%s) - INICIO ))s"
+diff --git a/db/migrations/V001__seq_numero_nfse.sql b/db/migrations/V001__seq_numero_nfse.sql
+new file mode 100644
+index 0000000..21ef812
+--- /dev/null
++++ b/db/migrations/V001__seq_numero_nfse.sql
+@@ -0,0 +1,14 @@
++SET DEFINE OFF
++WHENEVER SQLERROR EXIT FAILURE
++
++-- numero da NFS-e passa a vir de sequence, sem varrer a NFSE a cada emissao
++DECLARE
++    v_inicio NUMBER;
++BEGIN
++    SELECT NVL(MAX(NUMERO), 0) + 1 INTO v_inicio FROM NFSE;
++    EXECUTE IMMEDIATE 'CREATE SEQUENCE SEQ_NFSE_NUMERO START WITH ' || v_inicio ||
++                      ' INCREMENT BY 1 CACHE 100';
++END;
++/
++
++EXIT
+diff --git a/db/migrations/V001__seq_numero_nfse_rollback.sql b/db/migrations/V001__seq_numero_nfse_rollback.sql
+new file mode 100644
+index 0000000..3676358
+--- /dev/null
++++ b/db/migrations/V001__seq_numero_nfse_rollback.sql
+@@ -0,0 +1,6 @@
++SET DEFINE OFF
++WHENEVER SQLERROR EXIT FAILURE
++
++DROP SEQUENCE SEQ_NFSE_NUMERO;
++
++EXIT
+diff --git a/legado/src/NotaCarioca.Dados/NfseRepositorio.cs b/legado/src/NotaCarioca.Dados/NfseRepositorio.cs
+index a01fa9b..cf7ae7d 100644
+--- a/legado/src/NotaCarioca.Dados/NfseRepositorio.cs
++++ b/legado/src/NotaCarioca.Dados/NfseRepositorio.cs
+@@ -147,8 +147,8 @@ namespace NotaCarioca.Dados
+             string sql =
+                 "SELECT * FROM (\n" +
+                 " SELECT a.*, ROWNUM RN FROM (\n" +
+-                "  -- hint pedido pelo DBA (2018)\n" +
+-                "  SELECT /*+ FULL(n) */ " + Colunas + "\n" +
++                "  -- hint validado com o DBA (2026)\n" +
++                "  SELECT /*+ INDEX(n IX_NFSE_TOMADOR_DT) */ " + Colunas + "\n" +
+                 "    FROM NFSE n JOIN CONTRIBUINTES p ON p.ID = n.PRESTADOR_ID\n" +
+                 "   WHERE n.TOMADOR_DOCUMENTO = :doc\n" +
+                 "     AND TRUNC(n.DT_EMISSAO) >= :ini AND TRUNC(n.DT_EMISSAO) < :fim\n" +
+@@ -156,7 +156,7 @@ namespace NotaCarioca.Dados
+                 " ) a WHERE ROWNUM <= :limite\n" +
+                 ") WHERE RN > :deslocamento";
+ 
+-            return OracleHelper.ExecuteDataTable(sql,
++            return OracleHelper.ExecuteDataTable(120, sql,
+                 OracleHelper.P("doc", OracleDbType.Int64, ValidadorDocumento.ParaNumero(tomadorDoc)),
+                 OracleHelper.P("ini", OracleDbType.Date, ini.Date),
+                 OracleHelper.P("fim", OracleDbType.Date, fim.Date),
+diff --git a/legado/src/NotaCarioca.Dados/OracleHelper.cs b/legado/src/NotaCarioca.Dados/OracleHelper.cs
+index 3cee18c..a1d4f8d 100644
+--- a/legado/src/NotaCarioca.Dados/OracleHelper.cs
++++ b/legado/src/NotaCarioca.Dados/OracleHelper.cs
+@@ -32,12 +32,13 @@ namespace NotaCarioca.Dados
+             return conn;
+         }
+ 
+-        private static OracleCommand CriarComando(OracleConnection conn, OracleTransaction tx, string sql, OracleParameter[] parametros)
++        private static OracleCommand CriarComando(OracleConnection conn, OracleTransaction tx, string sql, OracleParameter[] parametros, int timeoutSegundos = 0)
+         {
+             OracleCommand cmd = conn.CreateCommand();
+             cmd.CommandText = sql;
+             cmd.BindByName = true;
+             cmd.InitialLONGFetchSize = -1;
++            if (timeoutSegundos > 0) cmd.CommandTimeout = timeoutSegundos;
+             if (tx != null) cmd.Transaction = tx;
+             if (parametros != null)
+             {
+@@ -57,9 +58,22 @@ namespace NotaCarioca.Dados
+             }
+         }
+ 
++        public static DataTable ExecuteDataTable(int timeoutSegundos, string sql, params OracleParameter[] parametros)
++        {
++            using (OracleConnection conn = AbrirConexao())
++            {
++                return ExecuteDataTable(conn, null, timeoutSegundos, sql, parametros);
++            }
++        }
++
+         public static DataTable ExecuteDataTable(OracleConnection conn, OracleTransaction tx, string sql, params OracleParameter[] parametros)
+         {
+-            using (OracleCommand cmd = CriarComando(conn, tx, sql, parametros))
++            return ExecuteDataTable(conn, tx, 0, sql, parametros);
++        }
++
++        public static DataTable ExecuteDataTable(OracleConnection conn, OracleTransaction tx, int timeoutSegundos, string sql, params OracleParameter[] parametros)
++        {
++            using (OracleCommand cmd = CriarComando(conn, tx, sql, parametros, timeoutSegundos))
+             {
+                 DataTable dt = new DataTable();
+                 using (OracleDataAdapter da = new OracleDataAdapter(cmd))
+diff --git a/legado/src/NotaCarioca.Dominio/CalculoIss.vb b/legado/src/NotaCarioca.Dominio/CalculoIss.vb
+index 9388052..c3e611c 100644
+--- a/legado/src/NotaCarioca.Dominio/CalculoIss.vb
++++ b/legado/src/NotaCarioca.Dominio/CalculoIss.vb
+@@ -14,7 +14,7 @@ Public Class CalculoIss
+         End If
+ 
+         Dim valor As Double = CDbl(baseCalculo) * CDbl(aliquota)
+-        Return CDec(Math.Round(valor, 2))
++        Return CDec(Math.Round(valor, 2, MidpointRounding.AwayFromZero))
+     End Function
+ 
+     Public Shared Function AliquotaEfetiva(ByVal aliquotaItem As Decimal, ByVal regime As String) As Decimal
+diff --git a/legado/src/NotaCarioca.Servicos/ProcessadorLoteRps.cs b/legado/src/NotaCarioca.Servicos/ProcessadorLoteRps.cs
+index e4120f4..fc27592 100644
+--- a/legado/src/NotaCarioca.Servicos/ProcessadorLoteRps.cs
++++ b/legado/src/NotaCarioca.Servicos/ProcessadorLoteRps.cs
+@@ -12,6 +12,8 @@ namespace NotaCarioca.Servicos
+ {
+     public class ProcessadorLoteRps
+     {
++        private const int MaxTentativasRps = 3;
++
+         private static List<ResultadoRps> _resultados = new List<ResultadoRps>();
+ 
+         private LoteRepositorio _lotes = new LoteRepositorio();
+@@ -38,7 +40,7 @@ namespace NotaCarioca.Servicos
+                     }
+                     catch (Exception ex)
+                     {
+-                        Console.WriteLine("[{0:HH:mm:ss}] falha no lote {1}: {2}", DateTime.Now, protocolo, ex.Message);
++                        Console.WriteLine("[{0:HH:mm:ss}] falha no lote {1}: {2}", DateTime.Now, protocolo, ex);
+                         try { _lotes.AtualizarSituacao(protocolo, 1); } catch (Exception) { }
+                     }
+                 });
+@@ -64,7 +66,7 @@ namespace NotaCarioca.Servicos
+             long prestadorId = Convert.ToInt64(info.Rows[0]["PRESTADOR_ID"]);
+             string regime = Convert.ToString(info.Rows[0]["REGIME"]);
+ 
+-            Console.WriteLine("[{0:HH:mm:ss}] processando lote {1} ({2} RPS)", DateTime.Now, protocolo, lote.Rps.Count);
++            Console.WriteLine("[{0:HH:mm:ss}] processando lote {1} (prestador {2}, {3} RPS)", DateTime.Now, protocolo, prestadorId, lote.Rps.Count);
+ 
+             _resultados.Clear();
+ 
+@@ -81,7 +83,10 @@ namespace NotaCarioca.Servicos
+                 {
+                     ResultadoRps res = ProcessarRps(conn, rps, prestadorId, regime, protocolo, itens);
+                     if (res.Sucesso) competencias.Add(Competencia.PrimeiroDia(rps.DataEmissao));
+-                    _resultados.Add(res);
++                    lock (_resultados)
++                    {
++                        _resultados.Add(res);
++                    }
+                 }
+             }
+ 
+@@ -127,43 +132,60 @@ namespace NotaCarioca.Servicos
+             if (rps.ValorServicos <= 0 || rps.ValorDeducoes < 0 || rps.ValorDeducoes > rps.ValorServicos)
+                 return Erro(res, CodigosRetorno.E062);
+ 
+-            try
++            for (int tentativa = 1; ; tentativa++)
+             {
+-                using (OracleTransaction tx = conn.BeginTransaction())
++                try
+                 {
+-                    if (!_rps.Existe(conn, tx, prestadorId, rps.Serie, rps.Numero))
+-                    {
+-                        long rpsId = _rps.Inserir(conn, tx, prestadorId, rps.Numero, rps.Serie, rps.Tipo, rps.DataEmissao,
+-                                                  protocolo, rps.TomadorDocumento, rps.TomadorRazaoSocial);
+-
+-                        decimal aliquota = CalculoIss.AliquotaEfetiva(itens[rps.ItemListaServico], regime);
+-                        decimal baseCalculo = CalculoIss.CalcularBase(rps.ValorServicos, rps.ValorDeducoes);
+-                        decimal valorIss = CalculoIss.CalcularValorIss(baseCalculo, aliquota, regime);
+-
+-                        long nfseId;
+-                        long numero;
+-                        string codigo;
+-                        _nfse.GerarNfse(conn, tx, rpsId, prestadorId, Competencia.PrimeiroDia(rps.DataEmissao),
+-                                        rps.ItemListaServico, rps.Discriminacao, rps.ValorServicos, rps.ValorDeducoes,
+-                                        aliquota, valorIss, rps.IssRetido, rps.TomadorDocumento, rps.TomadorRazaoSocial,
+-                                        out nfseId, out numero, out codigo);
+-                        tx.Commit();
+-
+-                        res.Sucesso = true;
+-                        res.NfseNumero = numero;
+-                    }
+-                    else
++                    return GravarRps(conn, rps, prestadorId, regime, protocolo, itens, res);
++                }
++                catch (OracleException ex)
++                {
++                    if (ex.Number == 1 && tentativa < MaxTentativasRps)
+                     {
+-                        tx.Rollback();
+-                        return Erro(res, CodigosRetorno.E060);
++                        Console.WriteLine("[{0:HH:mm:ss}] lote {1}: ORA-00001 no RPS {2}/{3}, tentativa {4} de {5}",
++                            DateTime.Now, protocolo, rps.Serie, rps.Numero, tentativa, MaxTentativasRps);
++                        Thread.Sleep(new Random().Next(50, 200));
++                        continue;
+                     }
++                    res.Sucesso = false;
++                    res.Codigo = CodigosRetorno.E999;
++                    res.Mensagem = ex.Message;
++                    return res;
+                 }
+             }
+-            catch (OracleException ex)
++        }
++
++        private ResultadoRps GravarRps(OracleConnection conn, RpsLote rps, long prestadorId, string regime, string protocolo,
++                                       Dictionary<string, decimal> itens, ResultadoRps res)
++        {
++            using (OracleTransaction tx = conn.BeginTransaction())
+             {
+-                res.Sucesso = false;
+-                res.Codigo = CodigosRetorno.E999;
+-                res.Mensagem = ex.Message;
++                if (!_rps.Existe(conn, tx, prestadorId, rps.Serie, rps.Numero))
++                {
++                    long rpsId = _rps.Inserir(conn, tx, prestadorId, rps.Numero, rps.Serie, rps.Tipo, rps.DataEmissao,
++                                              protocolo, rps.TomadorDocumento, rps.TomadorRazaoSocial);
++
++                    decimal aliquota = CalculoIss.AliquotaEfetiva(itens[rps.ItemListaServico], regime);
++                    decimal baseCalculo = CalculoIss.CalcularBase(rps.ValorServicos, rps.ValorDeducoes);
++                    decimal valorIss = CalculoIss.CalcularValorIss(baseCalculo, aliquota, regime);
++
++                    long nfseId;
++                    long numero;
++                    string codigo;
++                    _nfse.GerarNfse(conn, tx, rpsId, prestadorId, Competencia.PrimeiroDia(rps.DataEmissao),
++                                    rps.ItemListaServico, rps.Discriminacao, rps.ValorServicos, rps.ValorDeducoes,
++                                    aliquota, valorIss, rps.IssRetido, rps.TomadorDocumento, rps.TomadorRazaoSocial,
++                                    out nfseId, out numero, out codigo);
++                    tx.Commit();
++
++                    res.Sucesso = true;
++                    res.NfseNumero = numero;
++                }
++                else
++                {
++                    tx.Rollback();
++                    return Erro(res, CodigosRetorno.E060);
++                }
+             }
+             return res;
+         }
+diff --git a/legado/tests/NotaCarioca.Testes/CalculoIssArredondamentoTests.cs b/legado/tests/NotaCarioca.Testes/CalculoIssArredondamentoTests.cs
+new file mode 100644
+index 0000000..a38a09b
+--- /dev/null
++++ b/legado/tests/NotaCarioca.Testes/CalculoIssArredondamentoTests.cs
+@@ -0,0 +1,46 @@
++using Microsoft.VisualStudio.TestTools.UnitTesting;
++using NotaCarioca.Dominio;
++
++namespace NotaCarioca.Testes
++{
++    [TestClass]
++    public class CalculoIssArredondamentoTests
++    {
++        [TestMethod]
++        public void Iss_Aliquota5_BaseInteira()
++        {
++            Assert.AreEqual(25m, CalculoIss.CalcularValorIss(500m, 0.05m, "N"));
++        }
++
++        [TestMethod]
++        public void Iss_Aliquota2_TerceiraCasaAbaixoDeCinco()
++        {
++            Assert.AreEqual(2.00m, CalculoIss.CalcularValorIss(100.04m, 0.02m, "N"));
++        }
++
++        [TestMethod]
++        public void Iss_Aliquota3_TerceiraCasaAcimaDeCinco()
++        {
++            Assert.AreEqual(3.01m, CalculoIss.CalcularValorIss(100.30m, 0.03m, "N"));
++        }
++
++        [TestMethod]
++        public void Iss_SemAliquota_Zero()
++        {
++            Assert.AreEqual(0m, CalculoIss.CalcularValorIss(1000m, 0m, "N"));
++        }
++
++        [TestMethod]
++        public void Iss_Mei_IgnoraAliquota()
++        {
++            Assert.AreEqual(0m, CalculoIss.CalcularValorIss(2500m, 0.05m, "M"));
++        }
++
++        [TestMethod]
++        public void Iss_BaseComDeducoes()
++        {
++            decimal baseCalculo = CalculoIss.CalcularBase(1500m, 500m);
++            Assert.AreEqual(20m, CalculoIss.CalcularValorIss(baseCalculo, 0.02m, "N"));
++        }
++    }
++}
+diff --git a/legado/tests/NotaCarioca.Testes/CalculoIssTests.cs b/legado/tests/NotaCarioca.Testes/CalculoIssTests.cs
+index 7fc9065..4a99e2c 100644
+--- a/legado/tests/NotaCarioca.Testes/CalculoIssTests.cs
++++ b/legado/tests/NotaCarioca.Testes/CalculoIssTests.cs
+@@ -21,7 +21,7 @@ namespace NotaCarioca.Testes
+         [TestMethod]
+         public void Iss_DuasCasas()
+         {
+-            Assert.AreEqual(3.01m, CalculoIss.CalcularValorIss(150.30m, 0.02m, "S"));
++            Assert.AreEqual(37.03m, CalculoIss.CalcularValorIss(1234.50m, 0.03m, "S"));
+         }
+ 
+         [TestMethod]
