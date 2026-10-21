@@ -9,9 +9,11 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageReference Include="MSTest.TestAdapter" Version="3.6.4" />
     <PackageReference Include="MSTest.TestFramework" Version="3.6.4" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="8.0.11" Condition="'$(TargetFramework)' == 'net8.0'" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\NotaCarioca.Dominio\NotaCarioca.Dominio.vbproj" />
     <ProjectReference Include="..\..\src\NotaCarioca.Servicos\NotaCarioca.Servicos.csproj" />
+    <ProjectReference Include="..\..\src\NotaCarioca.WebServices\NotaCarioca.WebServices.csproj" Condition="'$(TargetFramework)' == 'net8.0'" />
   </ItemGroup>
 </Project>

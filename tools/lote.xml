@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="utf-8"?>
+<EnviarLoteRpsEnvio>
+  <LoteRps Id="lote1">
+    <NumeroLote>1</NumeroLote>
+    <Prestador>
+      <Cnpj>00000000000000</Cnpj>
+      <InscricaoMunicipal>10000025</InscricaoMunicipal>
+    </Prestador>
+    <QuantidadeRps>3</QuantidadeRps>
+    <ListaRps>
+      <Rps>
+        <InfRps Id="rps1">
+          <IdentificacaoRps>
+            <Numero>1</Numero>
+            <Serie>GMDJ4</Serie>
+            <Tipo>1</Tipo>
+          </IdentificacaoRps>
+          <DataEmissao>2026-10-20T22:19:12</DataEmissao>
+          <Servico>
+            <Valores>
+              <ValorServicos>1434.93</ValorServicos>
+              <ValorDeducoes>143.49</ValorDeducoes>
+              <IssRetido>1</IssRetido>
+            </Valores>
+            <ItemListaServico>13.02</ItemListaServico>
+            <Discriminacao>Prestacao de servicos conforme contrato e ordem de servico 1. Atividades executadas no periodo, incluindo levantamento de requisitos, execucao, acompanhamento, relatorios gerenciais, suporte presencial e remoto, treinamento da equipe do tomador, visitas tecnicas e demais atividades previstas no escopo contratado, conforme detalhamento anexo a ordem de servico. Valores ja consideram materiais e deslocamentos quando aplicavel. Documento emitido para fins de teste.</Discriminacao>
+          </Servico>
+          <Tomador>
+            <IdentificacaoTomador>
+              <CpfCnpj>
+                <Cnpj>12469134000135</Cnpj>
+              </CpfCnpj>
+            </IdentificacaoTomador>
+            <RazaoSocial>TOMADOR SINTETICO 124691</RazaoSocial>
+          </Tomador>
+        </InfRps>
+      </Rps>
+      <Rps>
+        <InfRps Id="rps2">
+          <IdentificacaoRps>
+            <Numero>2</Numero>
+            <Serie>GMDJ4</Serie>
+            <Tipo>1</Tipo>
+          </IdentificacaoRps>
+          <DataEmissao>2026-10-20T22:19:12</DataEmissao>
+          <Servico>
+            <Valores>
+              <ValorServicos>10322.78</ValorServicos>
+              <ValorDeducoes>0.00</ValorDeducoes>
+              <IssRetido>2</IssRetido>
+            </Valores>
+            <ItemListaServico>14.01</ItemListaServico>
+            <Discriminacao>Prestacao de servicos conforme contrato e ordem de servico 2. Atividades executadas no periodo, incluindo levantamento de requisitos, execucao, acompanhamento, relatorios gerenciais, suporte presencial e remoto, treinamento da equipe do tomador, visitas tecnicas e demais atividades previstas no escopo contratado, conforme detalhamento anexo a ordem de servico. Valores ja consideram materiais e deslocamentos quando aplicavel. Documento emitido para fins de teste.</Discriminacao>
+          </Servico>
+          <Tomador>
+            <IdentificacaoTomador>
+              <CpfCnpj>
+                <Cpf>33728395102</Cpf>
+              </CpfCnpj>
+            </IdentificacaoTomador>
+            <RazaoSocial>TOMADOR SINTETICO 337283</RazaoSocial>
+          </Tomador>
+        </InfRps>
+      </Rps>
+      <Rps>
+        <InfRps Id="rps3">
+          <IdentificacaoRps>
+            <Numero>3</Numero>
+            <Serie>GMDJ4</Serie>
+            <Tipo>1</Tipo>
+          </IdentificacaoRps>
+          <DataEmissao>2026-10-20T22:19:12</DataEmissao>
+          <Servico>
+            <Valores>
+              <ValorServicos>3419.17</ValorServicos>
+              <ValorDeducoes>0.00</ValorDeducoes>
+              <IssRetido>2</IssRetido>
+            </Valores>
+            <ItemListaServico>04.01</ItemListaServico>
+            <Discriminacao>Prestacao de servicos conforme contrato e ordem de servico 3. Atividades executadas no periodo, incluindo levantamento de requisitos, execucao, acompanhamento, relatorios gerenciais, suporte presencial e remoto, treinamento da equipe do tomador, visitas tecnicas e demais atividades previstas no escopo contratado, conforme detalhamento anexo a ordem de servico. Valores ja consideram materiais e deslocamentos quando aplicavel. Documento emitido para fins de teste.</Discriminacao>
+          </Servico>
+          <Tomador>
+            <IdentificacaoTomador>
+              <CpfCnpj>
+                <Cnpj>45802443000134</Cnpj>
+              </CpfCnpj>
+            </IdentificacaoTomador>
+            <RazaoSocial>TOMADOR SINTETICO 458024</RazaoSocial>
+          </Tomador>
+        </InfRps>
+      </Rps>
+    </ListaRps>
+  </LoteRps>
+</EnviarLoteRpsEnvio>
