@@ -10,7 +10,7 @@ services:
       - "127.0.0.1:1521:1521"
     volumes:
       - ./db:/opt/nfse/db:ro
-      - ./db/init.sh:/container-entrypoint-initdb.d/10_nfse.sh:ro
+      - ./db/init.sh:/container-entrypoint-initdb.d/init.sh:ro
       - oracle-data:/opt/oracle/oradata
     healthcheck:
       test: ["CMD", "healthcheck.sh"]
